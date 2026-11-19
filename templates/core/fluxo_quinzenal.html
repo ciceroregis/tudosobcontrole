@@ -1,0 +1,968 @@
+{% extends 'core/base.html' %}
+{% load humanize moeda %}
+
+{% block title %}Fluxo de Caixa • Financeiro tudo sob controle{% endblock %}
+
+{% block content %}
+<!-- CABEÇALHO E FILTRO DE COMPETÊNCIA + CONFIGURAÇÃO DINÂMICA -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3 bg-white p-3 rounded-3 shadow-sm border">
+    <div>
+        <div class="d-flex align-items-center gap-2">
+            <h4 class="mb-0 fw-bold">
+                <i class="bi bi-calendar2-range text-primary me-1"></i>
+                Matriz de Fluxo de Caixa — {{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }}
+            </h4>
+            {% if perfil_usuario.recebe_duas_datas %}
+                <span class="badge bg-warning text-dark border border-warning-subtle">
+                    <i class="bi bi-layout-split me-1"></i> Modo Quinzenal Ativo (2 Datas)
+                </span>
+            {% else %}
+                <span class="badge bg-primary">
+                    <i class="bi bi-calendar-check me-1"></i> Modo Mensal Unificado (1 Data)
+                </span>
+            {% endif %}
+        </div>
+        <p class="text-muted small mb-0 mt-1">
+            {% if perfil_usuario.recebe_duas_datas %}
+                <span class="text-primary fw-semibold">1º Recebimento ({{ perfil_usuario.label_curto_fechamento }}): {{ matriz.data_fechamento_5du|date:"d/m/Y" }}</span>
+                • <span class="text-warning-emphasis fw-semibold">2º Recebimento ({{ perfil_usuario.label_curto_adiantamento }}): {{ matriz.data_adiantamento_15|date:"d/m/Y" }}</span>
+            {% else %}
+                <span class="text-primary fw-semibold">Recebimento Salarial Integral ({{ perfil_usuario.label_curto_fechamento }}): {{ matriz.data_fechamento_5du|date:"d/m/Y" }}</span>
+            {% endif %}
+        </p>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <!-- Seletor de Mês/Ano -->
+        <form method="get" class="d-flex align-items-center gap-2">
+            <input type="hidden" name="aba" value="{{ aba_ativa }}">
+            <select name="mes" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for num, nome in meses_lista %}
+                    <option value="{{ num }}" {% if num == matriz.mes %}selected{% endif %}>{{ nome }}</option>
+                {% endfor %}
+            </select>
+            <select name="ano" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for a in anos_lista %}
+                    <option value="{{ a }}" {% if a == matriz.ano %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </form>
+
+        <!-- Botão para Gerar/Recalcular Salário Automático no Mês -->
+        <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="gerar_salarios_mes">
+            <button type="submit" class="btn btn-sm btn-outline-success" title="Lança ou atualiza automaticamente as parcelas de salário neste mês">
+                <i class="bi bi-magic me-1"></i> Gerar Salário(s) no Mês
+            </button>
+        </form>
+
+        <!-- Botão Novo Lançamento -->
+        <button type="button" class="btn btn-sm btn-primary fw-semibold" data-bs-toggle="modal" data-bs-target="#modalNovoLancamento">
+            <i class="bi bi-plus-circle me-1"></i> Novo Lançamento
+        </button>
+    </div>
+</div>
+
+<!-- PAINEL DE CARTÕES RESUMO DOS CICLOS (SEPARAÇÃO VISUAL) -->
+{% if perfil_usuario.recebe_duas_datas %}
+<div class="row g-3 mb-4">
+    <!-- Card 1: Ciclo Fechamento (5º Dia Útil - Início do Mês) -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100 card-ciclo-fechamento border-0">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge badge-ciclo-fechamento mb-1">
+                            <i class="bi bi-1-circle-fill me-1"></i> 1º CICLO • RECEBIMENTO {{ perfil_usuario.label_curto_fechamento|upper }}
+                        </span>
+                        <h6 class="fw-bold mb-0 text-primary-emphasis">
+                            Contas de 01 a {{ perfil_usuario.dia_adiantamento|add:"-1" }} • Salário em {{ matriz.data_fechamento_5du|date:"d/m/Y" }}
+                        </h6>
+                    </div>
+                    <i class="bi bi-bank2 fs-3 text-primary opacity-75"></i>
+                </div>
+                <div class="row text-center my-2 pt-2 border-top border-primary-subtle">
+                    <div class="col-4">
+                        <div class="text-muted small">Entradas</div>
+                        <div class="fw-bold text-success">+ {{ matriz.resumo_q2.receitas|moeda }}</div>
+                    </div>
+                    <div class="col-4 border-start border-end">
+                        <div class="text-muted small">Contas Ciclo</div>
+                        <div class="fw-bold text-danger">- {{ matriz.resumo_q2.despesas|moeda }}</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-muted small">Sobra Ciclo</div>
+                        <div class="fw-bold {% if matriz.resumo_q2.liquido >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                            {{ matriz.resumo_q2.liquido|moeda }}
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span>Comprometimento do Fechamento</span>
+                        <span class="fw-semibold">{{ matriz.resumo_q2.pct_comprometido }}%</span>
+                    </div>
+                    <div class="progress" style="height: 7px;">
+                        <div class="progress-bar bg-primary" style="width: {{ matriz.resumo_q2.pct_comprometido }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 2: Ciclo Adiantamento / Vale (Dia 15 - Meio do Mês) -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100 card-ciclo-adiantamento border-0">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge badge-ciclo-adiantamento mb-1">
+                            <i class="bi bi-2-circle-fill me-1"></i> 2º CICLO • RECEBIMENTO {{ perfil_usuario.label_curto_adiantamento|upper }}
+                        </span>
+                        <h6 class="fw-bold mb-0 text-warning-emphasis">
+                            Contas de {{ perfil_usuario.dia_adiantamento }} a 31 • Salário em {{ matriz.data_adiantamento_15|date:"d/m/Y" }}
+                        </h6>
+                    </div>
+                    <i class="bi bi-wallet2 fs-3 text-warning-emphasis opacity-75"></i>
+                </div>
+                <div class="row text-center my-2 pt-2 border-top border-warning-subtle">
+                    <div class="col-4">
+                        <div class="text-muted small">Entradas (Vale)</div>
+                        <div class="fw-bold text-success">+ {{ matriz.resumo_q1.receitas|moeda }}</div>
+                    </div>
+                    <div class="col-4 border-start border-end">
+                        <div class="text-muted small">Contas Ciclo</div>
+                        <div class="fw-bold text-danger">- {{ matriz.resumo_q1.despesas|moeda }}</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-muted small">Sobra Ciclo</div>
+                        <div class="fw-bold {% if matriz.resumo_q1.liquido >= 0 %}text-warning-emphasis{% else %}text-danger{% endif %}">
+                            {{ matriz.resumo_q1.liquido|moeda }}
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span>Comprometimento do Adiantamento</span>
+                        <span class="fw-semibold">{{ matriz.resumo_q1.pct_comprometido }}%</span>
+                    </div>
+                    <div class="progress" style="height: 7px;">
+                        <div class="progress-bar bg-warning" style="width: {{ matriz.resumo_q1.pct_comprometido }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Resultado Consolidado do Mês & Saldo Projetado -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100 border-0 bg-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge bg-dark mb-1">
+                            <i class="bi bi-graph-up-arrow me-1"></i> CONSOLIDADO MENSAL
+                        </span>
+                        <h6 class="fw-bold mb-0">Saldo Anterior: {{ matriz.saldo_anterior|moeda }}</h6>
+                    </div>
+                    <i class="bi bi-cash-coin fs-3 text-success"></i>
+                </div>
+                <div class="row text-center my-2 pt-2 border-top">
+                    <div class="col-4">
+                        <div class="text-muted small">Receitas Mês</div>
+                        <div class="fw-bold text-success">+ {{ matriz.resumo_mensal.receitas|moeda }}</div>
+                    </div>
+                    <div class="col-4 border-start border-end">
+                        <div class="text-muted small">Despesas Mês</div>
+                        <div class="fw-bold text-danger">- {{ matriz.resumo_mensal.despesas|moeda }}</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-muted small">Saldo Final</div>
+                        <div class="fw-bold {% if matriz.saldo_final_projetado >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ matriz.saldo_final_projetado|moeda }}
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span>Comprometimento Total da Renda</span>
+                        <span class="fw-semibold">{{ matriz.resumo_mensal.pct_comprometido }}%</span>
+                    </div>
+                    <div class="progress" style="height: 7px;">
+                        <div class="progress-bar bg-success" style="width: {{ matriz.resumo_mensal.pct_comprometido }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Cards quando o usuário está no Modo Mensal Unificado (1 Data) -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 p-3">
+            <div class="text-muted small">Saldo Anterior</div>
+            <h5 class="fw-bold mb-0">{{ matriz.saldo_anterior|moeda }}</h5>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 p-3">
+            <div class="text-muted small">Total Receitas do Mês</div>
+            <h5 class="fw-bold text-success mb-0">+ {{ matriz.resumo_mensal.receitas|moeda }}</h5>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 p-3">
+            <div class="text-muted small">Total Despesas do Mês</div>
+            <h5 class="fw-bold text-danger mb-0">- {{ matriz.resumo_mensal.despesas|moeda }}</h5>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm border-0 p-3">
+            <div class="text-muted small">Saldo Projetado Final</div>
+            <h5 class="fw-bold {% if matriz.saldo_final_projetado >= 0 %}text-primary{% else %}text-danger{% endif %} mb-0">
+                {{ matriz.saldo_final_projetado|moeda }}
+            </h5>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ESTRUTURA DE ABAS (NAVEGAÇÃO DA FUNCIONALIDADE) -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white border-bottom pt-2 px-3">
+        <ul class="nav nav-tabs nav-tabs-custom" id="fluxoTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if aba_ativa == 'visao_geral' %}active{% endif %}" id="tab-geral" data-bs-toggle="tab" data-bs-target="#pane-geral" type="button" role="tab">
+                    <i class="bi bi-table me-1 text-primary"></i>
+                    1. Matriz Completa (Colunas Q1 & Q2)
+                    <span class="badge bg-secondary ms-1">{{ matriz.linhas_matriz|length }}</span>
+                </button>
+            </li>
+            {% if perfil_usuario.recebe_duas_datas %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if aba_ativa == 'fechamento' %}active{% endif %}" id="tab-q2" data-bs-toggle="tab" data-bs-target="#pane-q2" type="button" role="tab">
+                    <span class="badge badge-ciclo-fechamento me-1">{{ perfil_usuario.label_curto_fechamento }}</span>
+                    2. Contas do 1º Recebimento (Início do Mês)
+                    <span class="badge bg-primary ms-1">{{ matriz.linhas_fechamento_q2|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if aba_ativa == 'adiantamento' %}active{% endif %}" id="tab-q1" data-bs-toggle="tab" data-bs-target="#pane-q1" type="button" role="tab">
+                    <span class="badge badge-ciclo-adiantamento me-1">{{ perfil_usuario.label_curto_adiantamento }}</span>
+                    3. Contas do 2º Recebimento (Meio do Mês)
+                    <span class="badge bg-warning text-dark ms-1">{{ matriz.linhas_adiantamento_q1|length }}</span>
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if aba_ativa == 'config' %}active{% endif %}" id="tab-config" data-bs-toggle="tab" data-bs-target="#pane-config" type="button" role="tab">
+                    <i class="bi bi-sliders me-1 text-dark"></i>
+                    {% if perfil_usuario.recebe_duas_datas %}4.{% else %}2.{% endif %} Motor Salarial Dinâmico (Configurar 1 ou 2 Datas)
+                </button>
+            </li>
+        </ul>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="tab-content" id="fluxoTabsContent">
+
+            <!-- ABA 1: MATRIZ COMPLETA COM COLUNAS SEGREGADAS (FECHAMENTO vs ADIANTAMENTO) -->
+            <div class="tab-pane fade {% if aba_ativa == 'visao_geral' %}show active{% endif %}" id="pane-geral" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-hover table-fluxo mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3" style="width: 105px;">Data</th>
+                                {% if perfil_usuario.recebe_duas_datas %}
+                                <th style="width: 175px;">Ciclo Salarial</th>
+                                {% endif %}
+                                <th>Descrição do Lançamento</th>
+                                <th style="width: 210px;">Categoria</th>
+                                {% if perfil_usuario.recebe_duas_datas %}
+                                    <th class="text-end th-fechamento" style="width: 175px;">
+                                        <i class="bi bi-1-circle me-1"></i> 1º Ciclo ({{ perfil_usuario.label_curto_fechamento }})
+                                    </th>
+                                    <th class="text-end th-adiantamento" style="width: 175px;">
+                                        <i class="bi bi-2-circle me-1"></i> 2º Ciclo ({{ perfil_usuario.label_curto_adiantamento }})
+                                    </th>
+                                {% else %}
+                                    <th class="text-end" style="width: 165px;">Valor (R$)</th>
+                                {% endif %}
+                                <th class="text-center" style="width: 130px;">Status Pagto.</th>
+                                <th class="text-end" style="width: 145px;">Saldo Acumulado</th>
+                                <th class="text-center pe-3" style="width: 100px;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Linha Inicial: Saldo Anterior -->
+                            <tr class="table-secondary fw-semibold">
+                                <td class="ps-3">01/{{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }}</td>
+                                {% if perfil_usuario.recebe_duas_datas %}
+                                <td><span class="badge bg-secondary">SALDO INICIAL</span></td>
+                                {% endif %}
+                                <td colspan="{% if perfil_usuario.recebe_duas_datas %}5{% else %}4{% endif %}">
+                                    Saldo transportado do período anterior
+                                </td>
+                                <td class="text-end fw-bold">{{ matriz.saldo_anterior|moeda }}</td>
+                                <td></td>
+                            </tr>
+
+                            {% for item in matriz.linhas_matriz %}
+                                {% if perfil_usuario.recebe_duas_datas %}
+                                    {% ifchanged item.is_q1 %}
+                                        {% if item.is_q2 %}
+                                        <tr class="fechamento-divider-row">
+                                            <td colspan="9" class="ps-3 py-2">
+                                                <i class="bi bi-bank2 me-1"></i>
+                                                1º CICLO ({{ perfil_usuario.label_curto_fechamento|upper }}: {{ matriz.data_fechamento_5du|date:"d/m/Y" }}) — Contas de 01 a {{ perfil_usuario.dia_adiantamento|add:"-1" }} pagas com o 1º recebimento
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr class="quinzena-divider-row">
+                                            <td colspan="9" class="ps-3 py-2">
+                                                <i class="bi bi-wallet2 me-1"></i>
+                                                VIRADA DE QUINZENA • 2º CICLO ({{ perfil_usuario.label_curto_adiantamento|upper }}: {{ matriz.data_adiantamento_15|date:"d/m/Y" }}) — Contas de {{ perfil_usuario.dia_adiantamento }} a 31 pagas com o 2º recebimento
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endifchanged %}
+                                {% endif %}
+
+                                <tr class="{% if perfil_usuario.recebe_duas_datas %}{% if item.is_q1 %}row-ciclo-adiantamento{% else %}row-ciclo-fechamento{% endif %}{% endif %}">
+                                    <td class="ps-3 fw-semibold text-nowrap">
+                                        {{ item.obj.data|date:"d/m/Y" }}
+                                    </td>
+
+                                    {% if perfil_usuario.recebe_duas_datas %}
+                                    <td>
+                                        {% if item.is_q1 %}
+                                            <span class="badge badge-ciclo-adiantamento">
+                                                <i class="bi bi-2-circle-fill me-1"></i> {{ perfil_usuario.label_curto_adiantamento }} (2º Ciclo)
+                                            </span>
+                                        {% else %}
+                                            <span class="badge badge-ciclo-fechamento">
+                                                <i class="bi bi-1-circle-fill me-1"></i> {{ perfil_usuario.label_curto_fechamento }} (1º Ciclo)
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    {% endif %}
+
+                                    <td>
+                                        <div class="fw-semibold">
+                                            {% if item.obj.origem_salarial != 'NORMAL' %}
+                                                <i class="bi bi-stars text-warning me-1" title="Parcela Salarial"></i>
+                                            {% endif %}
+                                            {{ item.obj.descricao }}
+                                            {% if item.obj.fixo_recorrente %}
+                                                <span class="badge bg-light text-secondary border ms-1" title="Recorrente Mensal">Fixo</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if item.obj.observacao %}
+                                            <div class="text-muted" style="font-size: 0.76rem;">{{ item.obj.observacao }}</div>
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        <span class="badge bg-light text-dark border">
+                                            <i class="bi {{ item.obj.categoria.icone }} me-1"></i>
+                                            {{ item.obj.categoria.descricao }}
+                                        </span>
+                                    </td>
+
+                                    {% if perfil_usuario.recebe_duas_datas %}
+                                        <!-- Coluna Exclusiva Ciclo Fechamento (5º Dia Útil) -->
+                                        <td class="text-end col-fechamento-cell fw-bold">
+                                            {% if item.valor_col_q2 is not None %}
+                                                <span class="{% if item.obj.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                                    {% if item.obj.is_receita %}+{% else %}-{% endif %} {{ item.obj.valor|moeda }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted opacity-25">—</span>
+                                            {% endif %}
+                                        </td>
+
+                                        <!-- Coluna Exclusiva Ciclo Adiantamento (Dia 15) -->
+                                        <td class="text-end col-adiantamento-cell fw-bold">
+                                            {% if item.valor_col_q1 is not None %}
+                                                <span class="{% if item.obj.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                                    {% if item.obj.is_receita %}+{% else %}-{% endif %} {{ item.obj.valor|moeda }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted opacity-25">—</span>
+                                            {% endif %}
+                                        </td>
+                                    {% else %}
+                                        <!-- Modo Mensal Único: Coluna Única de Valor -->
+                                        <td class="text-end fw-bold {% if item.obj.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                            {% if item.obj.is_receita %}+{% else %}-{% endif %} {{ item.obj.valor|moeda }}
+                                        </td>
+                                    {% endif %}
+
+                                    <!-- Status de Pagamento Interativo -->
+                                    <td class="text-center">
+                                        <a href="{% url 'alternar_status_lancamento' item.obj.pk %}" class="text-decoration-none" title="Clique para alternar entre Pago, Pendente e Agendado">
+                                            {% if item.obj.status == 'PAGO' %}
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                    <i class="bi bi-check-circle-fill me-1"></i> Pago
+                                                </span>
+                                            {% elif item.obj.status == 'PENDENTE' %}
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                                                    <i class="bi bi-clock-history me-1"></i> Pendente
+                                                </span>
+                                            {% elif item.obj.status == 'AGENDADO' %}
+                                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                                                    <i class="bi bi-calendar-event me-1"></i> Agendado
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                                                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Atrasado
+                                                </span>
+                                            {% endif %}
+                                        </a>
+                                    </td>
+
+                                    <!-- Saldo Acumulado Passo a Passo -->
+                                    <td class="text-end fw-bold {% if item.saldo_acumulado >= 0 %}text-dark{% else %}text-danger{% endif %}">
+                                        {{ item.saldo_acumulado|moeda }}
+                                    </td>
+
+                                    <!-- Ações Rápidas (Editar Manualmente / Mover de Quinzena / Excluir) -->
+                                    <td class="text-center pe-3 text-nowrap">
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary py-0 px-2 btn-editar-lancamento"
+                                                title="Editar manualmente este lançamento / salário"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalEditarLancamento"
+                                                data-id="{{ item.obj.pk }}"
+                                                data-data="{{ item.obj.data|date:'Y-m-d' }}"
+                                                data-descricao="{{ item.obj.descricao }}"
+                                                data-categoria="{{ item.obj.categoria.pk }}"
+                                                data-valor="{{ item.obj.valor|moeda }}"
+                                                data-ciclo="{{ item.obj.ciclo }}"
+                                                data-status="{{ item.obj.status }}"
+                                                data-fixo="{{ item.obj.fixo_recorrente|yesno:'true,false' }}"
+                                                data-observacao="{{ item.obj.observacao }}">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+                                        {% if perfil_usuario.recebe_duas_datas %}
+                                        <a href="{% url 'alternar_ciclo_lancamento' item.obj.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Mover lançamento para a outra quinzena (Fechamento ↔ Adiantamento)">
+                                            <i class="bi bi-arrow-left-right"></i>
+                                        </a>
+                                        {% endif %}
+                                        <form method="post" action="{% url 'excluir_lancamento' item.obj.pk %}" class="d-inline" onsubmit="return confirm('Confirma a exclusão de {{ item.obj.descricao }}?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Excluir">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="9" class="text-center py-5 text-muted">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                        Nenhum lançamento registrado neste mês. Clique em <strong>"Gerar Salário(s) no Mês"</strong> ou <strong>"Novo Lançamento"</strong>.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% if matriz.linhas_matriz %}
+                        <tfoot class="table-light border-top-2 fw-bold">
+                            <tr>
+                                <td colspan="{% if perfil_usuario.recebe_duas_datas %}4{% else %}3{% endif %}" class="ps-3 text-end">
+                                    TOTAIS LÍQUIDOS DE CADA CICLO NO MÊS:
+                                </td>
+                                {% if perfil_usuario.recebe_duas_datas %}
+                                    <td class="text-end th-fechamento">
+                                        {{ matriz.resumo_q2.liquido|moeda }}
+                                    </td>
+                                    <td class="text-end th-adiantamento">
+                                        {{ matriz.resumo_q1.liquido|moeda }}
+                                    </td>
+                                {% else %}
+                                    <td class="text-end">
+                                        {{ matriz.resumo_mensal.liquido|moeda }}
+                                    </td>
+                                {% endif %}
+                                <td class="text-center">SALDO FINAL:</td>
+                                <td class="text-end {% if matriz.saldo_final_projetado >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ matriz.saldo_final_projetado|moeda }}
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+
+            {% if perfil_usuario.recebe_duas_datas %}
+            <!-- ABA 2: ISOLAMENTO DO CICLO DE FECHAMENTO (5º DIA ÚTIL - INÍCIO DO MÊS) -->
+            <div class="tab-pane fade {% if aba_ativa == 'fechamento' %}show active{% endif %}" id="pane-q2" role="tabpanel">
+                <div class="p-3 bg-primary-subtle border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h6 class="fw-bold text-primary-emphasis mb-0">
+                            <i class="bi bi-bank2 me-1"></i>
+                            Ciclo do Fechamento Salarial (5º Dia Útil: {{ matriz.data_fechamento_5du|date:"d/m/Y" }})
+                        </h6>
+                        <small class="text-primary-emphasis">
+                            Contas fixas e variáveis do início do mês (dias 01 a {{ perfil_usuario.dia_adiantamento|add:"-1" }}) pagas com o salário de fechamento.
+                        </small>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <span class="badge bg-success fs-6">Receitas: {{ matriz.resumo_q2.receitas|moeda }}</span>
+                        <span class="badge bg-danger fs-6">Despesas: {{ matriz.resumo_q2.despesas|moeda }}</span>
+                        <span class="badge bg-primary fs-6">Sobra Líquida: {{ matriz.resumo_q2.liquido|moeda }}</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-fluxo mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">Data</th>
+                                <th>Descrição</th>
+                                <th>Categoria</th>
+                                <th class="text-end th-fechamento">Valor no 1º Ciclo</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center pe-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in matriz.linhas_fechamento_q2 %}
+                            <tr class="row-ciclo-fechamento">
+                                <td class="ps-3 fw-semibold">{{ item.obj.data|date:"d/m/Y" }}</td>
+                                <td class="fw-semibold">{{ item.obj.descricao }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ item.obj.categoria.descricao }}</span></td>
+                                <td class="text-end fw-bold {% if item.obj.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                    {% if item.obj.is_receita %}+{% else %}-{% endif %} {{ item.obj.valor|moeda }}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge {% if item.obj.status == 'PAGO' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                        {{ item.obj.get_status_display }}
+                                    </span>
+                                </td>
+                                <td class="text-center pe-3 text-nowrap">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary me-1 btn-editar-lancamento"
+                                            title="Editar valor/data manualmente"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalEditarLancamento"
+                                            data-id="{{ item.obj.pk }}"
+                                            data-data="{{ item.obj.data|date:'Y-m-d' }}"
+                                            data-descricao="{{ item.obj.descricao }}"
+                                            data-categoria="{{ item.obj.categoria.pk }}"
+                                            data-valor="{{ item.obj.valor|moeda }}"
+                                            data-ciclo="{{ item.obj.ciclo }}"
+                                            data-status="{{ item.obj.status }}"
+                                            data-fixo="{{ item.obj.fixo_recorrente|yesno:'true,false' }}"
+                                            data-observacao="{{ item.obj.observacao }}">
+                                        <i class="bi bi-pencil-square"></i> Editar
+                                    </button>
+                                    <a href="{% url 'alternar_ciclo_lancamento' item.obj.pk %}" class="btn btn-sm btn-outline-warning text-dark">
+                                        <i class="bi bi-arrow-right-circle me-1"></i> Mover p/ Vale
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">Nenhum lançamento alocado no Ciclo de Fechamento.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA 3: ISOLAMENTO DO CICLO DE ADIANTAMENTO / VALE (DIA 15 - MEIO DO MÊS) -->
+            <div class="tab-pane fade {% if aba_ativa == 'adiantamento' %}show active{% endif %}" id="pane-q1" role="tabpanel">
+                <div class="p-3 bg-warning-subtle border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h6 class="fw-bold text-warning-emphasis mb-0">
+                            <i class="bi bi-wallet2 me-1"></i>
+                            Ciclo do Adiantamento Quinzenal / Vale (Meio do Mês: {{ matriz.data_adiantamento_15|date:"d/m/Y" }})
+                        </h6>
+                        <small class="text-warning-emphasis">
+                            Contas e despesas da segunda metade do mês (dias {{ perfil_usuario.dia_adiantamento }} a 31) pagas com o Vale/Adiantamento.
+                        </small>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <span class="badge bg-success fs-6">Receitas (Vale): {{ matriz.resumo_q1.receitas|moeda }}</span>
+                        <span class="badge bg-danger fs-6">Despesas: {{ matriz.resumo_q1.despesas|moeda }}</span>
+                        <span class="badge bg-warning text-dark fs-6">Sobra Líquida: {{ matriz.resumo_q1.liquido|moeda }}</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-fluxo mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">Data</th>
+                                <th>Descrição</th>
+                                <th>Categoria</th>
+                                <th class="text-end th-adiantamento">Valor no 2º Ciclo</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center pe-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in matriz.linhas_adiantamento_q1 %}
+                            <tr class="row-ciclo-adiantamento">
+                                <td class="ps-3 fw-semibold">{{ item.obj.data|date:"d/m/Y" }}</td>
+                                <td class="fw-semibold">{{ item.obj.descricao }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ item.obj.categoria.descricao }}</span></td>
+                                <td class="text-end fw-bold {% if item.obj.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                    {% if item.obj.is_receita %}+{% else %}-{% endif %} {{ item.obj.valor|moeda }}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge {% if item.obj.status == 'PAGO' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                        {{ item.obj.get_status_display }}
+                                    </span>
+                                </td>
+                                <td class="text-center pe-3 text-nowrap">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary me-1 btn-editar-lancamento"
+                                            title="Editar valor/data manualmente"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalEditarLancamento"
+                                            data-id="{{ item.obj.pk }}"
+                                            data-data="{{ item.obj.data|date:'Y-m-d' }}"
+                                            data-descricao="{{ item.obj.descricao }}"
+                                            data-categoria="{{ item.obj.categoria.pk }}"
+                                            data-valor="{{ item.obj.valor|moeda }}"
+                                            data-ciclo="{{ item.obj.ciclo }}"
+                                            data-status="{{ item.obj.status }}"
+                                            data-fixo="{{ item.obj.fixo_recorrente|yesno:'true,false' }}"
+                                            data-observacao="{{ item.obj.observacao }}">
+                                        <i class="bi bi-pencil-square"></i> Editar
+                                    </button>
+                                    <a href="{% url 'alternar_ciclo_lancamento' item.obj.pk %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-arrow-left-circle me-1"></i> Mover p/ Fechamento
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">Nenhum lançamento alocado no Ciclo de Adiantamento.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- ABA 4: CONFIGURAÇÃO DINÂMICA DO MOTOR SALARIAL -->
+            <div class="tab-pane fade {% if aba_ativa == 'config' %}show active{% endif %}" id="pane-config" role="tabpanel">
+                <div class="p-4">
+                    <div class="row">
+                        <div class="col-lg-7">
+                            <h5 class="fw-bold mb-3">
+                                <i class="bi bi-gear-wide-connected text-primary me-1"></i>
+                                Parametrização Dinâmica de Recebimento Salarial
+                            </h5>
+                            <form method="post" class="card p-4 bg-light border-0 shadow-sm">
+                                {% csrf_token %}
+                                <input type="hidden" name="acao" value="configurar_salario">
+
+                                <div class="form-check form-switch mb-4 p-3 bg-white rounded border">
+                                    {{ form_perfil.recebe_duas_datas }}
+                                    <label class="form-check-label fw-bold ms-2" for="{{ form_perfil.recebe_duas_datas.id_for_label }}">
+                                        Recebo meu salário dividido em duas datas no mês (Adiantamento + Fechamento)
+                                    </label>
+                                    <div class="text-muted small ms-2 mt-1">
+                                        Quando <strong>ativado</strong>, a planilha exibe as colunas e abas segregadas entre <em>Ciclo Fechamento (5º Dia Útil)</em> e <em>Ciclo Adiantamento (Meio do Mês)</em>. Quando <strong>desativado</strong>, o sistema opera no modo mensal tradicional (data única).
+                                    </div>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Saldo Inicial em Caixa (R$)</label>
+                                        {{ form_perfil.saldo_inicial }}
+                                        <div class="form-text">Saldo base inicial antes dos lançamentos.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">Salário Mensal Base Total (R$)</label>
+                                        {{ form_perfil.salario_bruto_mensal }}
+                                        <div class="form-text">Valor base usado quando os campos manuais estiverem vazios.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">% do 2º Recebimento (Vale)</label>
+                                        {{ form_perfil.percentual_adiantamento }}
+                                        <div class="form-text">Padrão: 40% no 2º ciclo e 60% no 1º ciclo.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold text-primary">
+                                            <i class="bi bi-pencil-square me-1"></i>Valor Manual do Fechamento 5º D.Ú. (R$)
+                                        </label>
+                                        {{ form_perfil.valor_fechamento_manual }}
+                                        <div class="form-text">Opcional: Informe o valor líquido exato do Fechamento (após INSS/IRRF/descontos). Deixe vazio para cálculo automático.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold text-warning-emphasis">
+                                            <i class="bi bi-pencil-square me-1"></i>Valor Manual do Adiantamento / Vale (R$)
+                                        </label>
+                                        {{ form_perfil.valor_adiantamento_manual }}
+                                        <div class="form-text">Opcional: Informe o valor exato em R$ do Vale do dia {{ perfil_usuario.dia_adiantamento }}. Deixe vazio para usar o percentual.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Dia do Adiantamento (Meio do Mês)</label>
+                                        {{ form_perfil.dia_adiantamento }}
+                                        <div class="form-text">Geralmente dia 15 ou dia 20 (antecipa se cair no fim de semana).</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Dia Fixo do Fechamento (se não usar 5º D.Ú.)</label>
+                                        {{ form_perfil.dia_fechamento_fixo }}
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            {{ form_perfil.usa_quinto_dia_util }}
+                                            <label class="form-check-label fw-semibold" for="{{ form_perfil.usa_quinto_dia_util.id_for_label }}">
+                                                Calcular automaticamente o Fechamento no 5º Dia Útil bancário do mês
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="gerar_no_mes" value="1" id="chkGerarMes" checked>
+                                            <label class="form-check-label text-success fw-semibold" for="chkGerarMes">
+                                                Atualizar automaticamente os lançamentos de salário na competência atual ({{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }})
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4">
+                                    <button type="submit" class="btn btn-primary fw-semibold">
+                                        <i class="bi bi-check2-circle me-1"></i> Salvar Configuração Salarial
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="col-lg-5 mt-4 mt-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body">
+                                    <h6 class="fw-bold text-uppercase text-muted mb-3">Simulação da Regra Atual</h6>
+                                    {% if perfil_usuario.recebe_duas_datas %}
+                                        <div class="p-3 rounded mb-3 card-ciclo-fechamento">
+                                            <div class="small fw-bold text-primary">1º RECEBIMENTO DO MÊS ({{ perfil_usuario.label_curto_fechamento|upper }})</div>
+                                            <div class="d-flex justify-content-between align-items-center mt-1">
+                                                <span>Data em {{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }}: <strong>{{ matriz.data_fechamento_5du|date:"d/m/Y" }}</strong></span>
+                                                <span class="fs-5 fw-bold text-primary">{{ perfil_usuario.valor_fechamento_estimado|moeda }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="p-3 rounded mb-3 card-ciclo-adiantamento">
+                                            <div class="small fw-bold text-warning-emphasis">2º RECEBIMENTO DO MÊS ({{ perfil_usuario.label_curto_adiantamento|upper }})</div>
+                                            <div class="d-flex justify-content-between align-items-center mt-1">
+                                                <span>Data em {{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }}: <strong>{{ matriz.data_adiantamento_15|date:"d/m/Y" }}</strong></span>
+                                                <span class="fs-5 fw-bold text-warning-emphasis">{{ perfil_usuario.valor_adiantamento_estimado|moeda }}</span>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <div class="p-3 rounded mb-3 bg-light border">
+                                            <div class="small fw-bold text-primary">RECEBIMENTO MENSAL INTEGRAL (DATA ÚNICA)</div>
+                                            <div class="d-flex justify-content-between align-items-center mt-1">
+                                                <span>Data em {{ matriz.mes|stringformat:"02d" }}/{{ matriz.ano }}: <strong>{{ matriz.data_fechamento_5du|date:"d/m/Y" }}</strong></span>
+                                                <span class="fs-5 fw-bold text-success">{{ perfil_usuario.valor_fechamento_estimado|moeda }}</span>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                    <div class="alert alert-info small mb-0">
+                                        <i class="bi bi-lightbulb-fill me-1"></i>
+                                        <strong>Como funciona a alocação automática:</strong> Ao cadastrar qualquer despesa, se a data for do dia <strong>01 até {{ perfil_usuario.dia_adiantamento|add:"-1" }}</strong>, o sistema sugere o <strong>Ciclo do Fechamento (5º Dia Útil)</strong>. Se for a partir do dia <strong>{{ perfil_usuario.dia_adiantamento }}</strong>, sugere o <strong>Ciclo do Adiantamento (Vale)</strong> — mas você também pode mover qualquer conta entre os ciclos com 1 clique!
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: NOVO LANÇAMENTO -->
+<div class="modal fade" id="modalNovoLancamento" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="novo_lancamento">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-plus-circle me-1 text-info"></i> Novo Lançamento no Fluxo de Caixa
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Data</label>
+                            {{ form_lancamento.data }}
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Descrição</label>
+                            {{ form_lancamento.descricao }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Categoria</label>
+                            {{ form_lancamento.categoria }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Valor (R$)</label>
+                            {{ form_lancamento.valor }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Ciclo Salarial Alocado</label>
+                            {{ form_lancamento.ciclo }}
+                            <div class="form-text">Escolha qual parcela do salário pagará esta conta.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Status de Pagamento</label>
+                            {{ form_lancamento.status }}
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Observação</label>
+                            {{ form_lancamento.observacao }}
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                {{ form_lancamento.fixo_recorrente }}
+                                <label class="form-check-label fw-semibold" for="{{ form_lancamento.fixo_recorrente.id_for_label }}">
+                                    Lançamento Fixo Mensal
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">
+                        <i class="bi bi-check-lg me-1"></i> Salvar Lançamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: EDITAR LANÇAMENTO / SALÁRIO MANUALMENTE -->
+<div class="modal fade" id="modalEditarLancamento" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="editar_lancamento">
+                <input type="hidden" name="lancamento_id" id="edit_lancamento_id">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-pencil-square me-1"></i> Editar Lançamento / Salário Manualmente
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Data</label>
+                            <input type="date" name="data" id="edit_data" class="form-control" required>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Descrição</label>
+                            <input type="text" name="descricao" id="edit_descricao" class="form-control" maxlength="140" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Categoria</label>
+                            <select name="categoria" id="edit_categoria" class="form-select" required>
+                                {% for cat in form_lancamento.fields.categoria.queryset %}
+                                    <option value="{{ cat.pk }}">{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Valor Manual (R$)</label>
+                            <input type="text" inputmode="numeric" name="valor" id="edit_valor" class="form-control mask-money fw-bold" placeholder="R$ 0,00" autocomplete="off" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Ciclo Salarial Alocado</label>
+                            <select name="ciclo" id="edit_ciclo" class="form-select" required>
+                                {% for val, label in form_lancamento.fields.ciclo.choices %}
+                                    <option value="{{ val }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Status de Pagamento</label>
+                            <select name="status" id="edit_status" class="form-select" required>
+                                {% for val, label in form_lancamento.fields.status.choices %}
+                                    <option value="{{ val }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Observação</label>
+                            <input type="text" name="observacao" id="edit_observacao" class="form-control">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" name="fixo_recorrente" id="edit_fixo" class="form-check-input">
+                                <label class="form-check-label fw-semibold" for="edit_fixo">
+                                    Lançamento Fixo Mensal
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">
+                        <i class="bi bi-check2-circle me-1"></i> Salvar Alterações Manuais
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputData = document.querySelector('#modalNovoLancamento input[name="data"]');
+        const selectCiclo = document.querySelector('#modalNovoLancamento select[name="ciclo"]');
+        const diaCorte = {{ perfil_usuario.dia_adiantamento|default:15 }};
+        const recebeDuasDatas = {{ perfil_usuario.recebe_duas_datas|yesno:"true,false" }};
+
+        if (inputData && selectCiclo && recebeDuasDatas) {
+            inputData.addEventListener('change', function() {
+                const partes = this.value.split('-');
+                if (partes.length === 3) {
+                    const dia = parseInt(partes[2], 10);
+                    if (dia >= diaCorte) {
+                        selectCiclo.value = 'Q1_ADIANTAMENTO';
+                    } else {
+                        selectCiclo.value = 'Q2_FECHAMENTO';
+                    }
+                }
+            });
+        }
+
+        // Popula o modal de edição manual de lançamento / salário
+        const botoesEditar = document.querySelectorAll('.btn-editar-lancamento');
+        botoesEditar.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.getElementById('edit_lancamento_id').value = this.getAttribute('data-id');
+                document.getElementById('edit_data').value = this.getAttribute('data-data');
+                document.getElementById('edit_descricao').value = this.getAttribute('data-descricao');
+                document.getElementById('edit_categoria').value = this.getAttribute('data-categoria');
+                document.getElementById('edit_valor').value = this.getAttribute('data-valor');
+                document.getElementById('edit_ciclo').value = this.getAttribute('data-ciclo');
+                document.getElementById('edit_status').value = this.getAttribute('data-status');
+                document.getElementById('edit_observacao').value = this.getAttribute('data-observacao') || '';
+                document.getElementById('edit_fixo').checked = (this.getAttribute('data-fixo') === 'true');
+            });
+        });
+    });
+</script>
+{% endblock %}

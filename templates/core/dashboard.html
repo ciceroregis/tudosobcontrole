@@ -1,0 +1,169 @@
+{% extends 'core/base.html' %}
+{% load moeda %}
+
+{% block title %}Visão Geral • Financeiro tudo sob controle{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+            <h4 class="fw-bold mb-0">
+                <i class="bi bi-speedometer2 text-primary me-1"></i>
+                Painel Principal — Olá, {{ user.get_full_name|default:user.username }}!
+            </h4>
+            <span class="text-muted small">
+                Status: <i class="bi bi-circle-fill text-success" style="font-size: 0.6rem;"></i> Online
+                • Modo Atual: <strong>{% if perfil_usuario.recebe_duas_datas %}Fluxo Quinzenal em 2 Datas ({{ perfil_usuario.label_curto_fechamento }} e {{ perfil_usuario.label_curto_adiantamento }}){% else %}Fluxo Mensal em Data Única ({{ perfil_usuario.label_curto_fechamento }}){% endif %}</strong>
+            </span>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'fluxo_quinzenal' %}" class="btn btn-primary fw-semibold">
+            <i class="bi bi-calendar2-range me-1"></i> Abrir Matriz de Fluxo Quinzenal / Mensal
+        </a>
+        <a href="{% url 'fluxo_quinzenal' %}?aba=config" class="btn btn-outline-dark">
+            <i class="bi bi-sliders me-1"></i> Configurar Salário (1 ou 2 Datas)
+        </a>
+    </div>
+</div>
+
+<!-- Resumo Rápido dos Ciclos -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100 card-ciclo-fechamento">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <span class="badge badge-ciclo-fechamento">
+                        {% if perfil_usuario.recebe_duas_datas %}1º CICLO • RECEBIMENTO {{ perfil_usuario.label_curto_fechamento|upper }}{% else %}RECEBIMENTO MENSAL{% endif %}
+                    </span>
+                    <small class="fw-bold text-primary">{{ matriz.data_fechamento_5du|date:"d/m/Y" }}</small>
+                </div>
+                <h4 class="fw-bold mt-2 mb-1 text-primary">{{ matriz.resumo_q2.liquido|moeda }}</h4>
+                <div class="small text-muted">
+                    Entradas: <span class="text-success fw-semibold">+{{ matriz.resumo_q2.receitas|moeda }}</span> |
+                    Saídas: <span class="text-danger fw-semibold">-{{ matriz.resumo_q2.despesas|moeda }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if perfil_usuario.recebe_duas_datas %}
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100 card-ciclo-adiantamento">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <span class="badge badge-ciclo-adiantamento">2º CICLO • RECEBIMENTO {{ perfil_usuario.label_curto_adiantamento|upper }}</span>
+                    <small class="fw-bold text-warning-emphasis">{{ matriz.data_adiantamento_15|date:"d/m/Y" }}</small>
+                </div>
+                <h4 class="fw-bold mt-2 mb-1 text-warning-emphasis">{{ matriz.resumo_q1.liquido|moeda }}</h4>
+                <div class="small text-muted">
+                    Entradas: <span class="text-success fw-semibold">+{{ matriz.resumo_q1.receitas|moeda }}</span> |
+                    Saídas: <span class="text-danger fw-semibold">-{{ matriz.resumo_q1.despesas|moeda }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="{% if perfil_usuario.recebe_duas_datas %}col-md-4{% else %}col-md-8{% endif %}">
+        <div class="card shadow-sm border-0 h-100 bg-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <span class="badge bg-dark">SALDO PROJETADO FINAL DO MÊS</span>
+                    <small class="text-muted">Saldo Inicial: {{ matriz.saldo_anterior|moeda }}</small>
+                </div>
+                <h4 class="fw-bold mt-2 mb-1 {% if matriz.saldo_final_projetado >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ matriz.saldo_final_projetado|moeda }}
+                </h4>
+                <div class="small text-muted">
+                    Receitas Totais: <span class="text-success fw-semibold">+{{ matriz.resumo_mensal.receitas|moeda }}</span> |
+                    Despesas Totais: <span class="text-danger fw-semibold">-{{ matriz.resumo_mensal.despesas|moeda }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Painéis Herdados do Sistema Original: Lançamentos até Hoje vs Lançamentos Futuros -->
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-clock-history text-primary me-1"></i> Lançamentos até hoje ({{ hoje|date:"d/m/Y" }})</span>
+                <a href="{% url 'fluxo_quinzenal' %}" class="btn btn-sm btn-link">Ver todos</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">Data</th>
+                            <th>Ciclo</th>
+                            <th>Descrição</th>
+                            <th class="text-end pe-3">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in lancamentos_ate_hoje %}
+                        <tr class="{% if l.is_ciclo_adiantamento %}row-ciclo-adiantamento{% else %}row-ciclo-fechamento{% endif %}">
+                            <td class="ps-3">{{ l.data|date:"d/m/Y" }}</td>
+                            <td>
+                                {% if l.is_ciclo_adiantamento %}
+                                    <span class="badge badge-ciclo-adiantamento">Adiantamento</span>
+                                {% else %}
+                                    <span class="badge badge-ciclo-fechamento">Fechamento 5º DU</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-semibold">{{ l.descricao }}</td>
+                            <td class="text-end pe-3 fw-bold {% if l.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                {% if l.is_receita %}+{% else %}-{% endif %} {{ l.valor|moeda }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted">Nenhum lançamento até hoje.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-plus text-warning-emphasis me-1"></i> Lançamentos futuros (Projeção)</span>
+                <a href="{% url 'fluxo_quinzenal' %}" class="btn btn-sm btn-link">Ver todos</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">Data</th>
+                            <th>Ciclo</th>
+                            <th>Descrição</th>
+                            <th class="text-end pe-3">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in lancamentos_futuros %}
+                        <tr class="{% if l.is_ciclo_adiantamento %}row-ciclo-adiantamento{% else %}row-ciclo-fechamento{% endif %}">
+                            <td class="ps-3">{{ l.data|date:"d/m/Y" }}</td>
+                            <td>
+                                {% if l.is_ciclo_adiantamento %}
+                                    <span class="badge badge-ciclo-adiantamento">Adiantamento</span>
+                                {% else %}
+                                    <span class="badge badge-ciclo-fechamento">Fechamento 5º DU</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-semibold">{{ l.descricao }}</td>
+                            <td class="text-end pe-3 fw-bold {% if l.is_receita %}text-success{% else %}text-danger{% endif %}">
+                                {% if l.is_receita %}+{% else %}-{% endif %} {{ l.valor|moeda }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted">Nenhum lançamento futuro agendado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Categorias • Financeiro tudo sob controle{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-dark text-white fw-bold">
+                <i class="bi bi-diagram-3 me-1 text-info"></i> Nova Subcategoria
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Grupo Pai (Raiz)</label>
+                        {{ form.pai }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descrição</label>
+                        {{ form.descricao }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Ciclo Quinzenal Sugerido</label>
+                        {{ form.ciclo_sugerido }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Ícone Bootstrap</label>
+                        {{ form.icone }}
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 fw-semibold">
+                        <i class="bi bi-check2 me-1"></i> Salvar Categoria
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="row g-3">
+            {% for raiz in raizes %}
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header fw-bold {% if raiz.fator > 0 %}bg-success text-white{% else %}bg-danger text-white{% endif %}">
+                        <i class="bi {{ raiz.icone }} me-1"></i> {{ raiz.descricao }} (Fator: {{ raiz.fator }})
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% for sub in raiz.filhos.all %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi {{ sub.icone }} me-2 text-secondary"></i>
+                                <span class="fw-semibold">{{ sub.descricao }}</span>
+                                <div class="mt-1">
+                                    {% if sub.ciclo_sugerido == 'Q1_ADIANTAMENTO' %}
+                                        <span class="badge badge-ciclo-adiantamento" style="font-size: 0.7rem;">Sugerido: Adiantamento (Dia 15)</span>
+                                    {% elif sub.ciclo_sugerido == 'Q2_FECHAMENTO' %}
+                                        <span class="badge badge-ciclo-fechamento" style="font-size: 0.7rem;">Sugerido: Fechamento (5º D.Ú.)</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border" style="font-size: 0.7rem;">Flexível (Ambos)</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <form method="post" onsubmit="return confirm('Excluir categoria {{ sub.descricao }}?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="acao" value="excluir">
+                                <input type="hidden" name="categoria_id" value="{{ sub.pk }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

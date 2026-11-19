@@ -1,0 +1,85 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Cadastro de Usuário • Financeiro tudo sob controle{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center my-4">
+    <div class="col-lg-7">
+        <div class="card shadow border-0 rounded-4">
+            <div class="card-header bg-dark text-white py-3 px-4">
+                <h5 class="fw-bold mb-0"><i class="bi bi-person-plus-fill text-info me-2"></i>Cadastro de Usuário & Perfil Salarial</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-semibold">{{ form.nome_completo.label }}</label>
+                            {{ form.nome_completo }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Login de Acesso</label>
+                            {{ form.username }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">E-mail</label>
+                            {{ form.email }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">{{ form.cpf.label }}</label>
+                            {{ form.cpf }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">{{ form.celular.label }}</label>
+                            {{ form.celular }}
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <div class="p-3 bg-light rounded border">
+                                <h6 class="fw-bold text-primary mb-2">
+                                    <i class="bi bi-cash-stack me-1"></i> Modelo Dinâmico de Recebimento Salarial
+                                </h6>
+                                <div class="form-check form-switch mb-3">
+                                    {{ form.recebe_duas_datas }}
+                                    <label class="form-check-label fw-semibold" for="{{ form.recebe_duas_datas.id_for_label }}">
+                                        {{ form.recebe_duas_datas.label }}
+                                    </label>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-semibold">{{ form.salario_bruto_mensal.label }}</label>
+                                        {{ form.salario_bruto_mensal }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-semibold">{{ form.percentual_adiantamento.label }}</label>
+                                        {{ form.percentual_adiantamento }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">{{ form.senha.label }}</label>
+                            {{ form.senha }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">{{ form.confirmar_senha.label }}</label>
+                            {{ form.confirmar_senha }}
+                            {% if form.confirmar_senha.errors %}
+                                <div class="text-danger small">{{ form.confirmar_senha.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                        <a href="{% url 'login' %}" class="btn btn-outline-secondary">Voltar ao Login</a>
+                        <button type="submit" class="btn btn-primary fw-semibold px-4">
+                            <i class="bi bi-check2-circle me-1"></i> Cadastrar e Iniciar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
